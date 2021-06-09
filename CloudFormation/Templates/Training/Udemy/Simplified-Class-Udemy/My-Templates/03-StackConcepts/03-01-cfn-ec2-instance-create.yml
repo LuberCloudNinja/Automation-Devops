@@ -1,0 +1,8 @@
+AWSTemplateFormatVersion: 2010-09-09
+Resources: 
+  DevEC2Instance: 
+    Type: 'AWS::EC2::Instance'
+    Properties: 
+      ImageId: ami-0742b4e673072066f
+      InstanceType: t2.small
+      KeyName: cfn-key-3
