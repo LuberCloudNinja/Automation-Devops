@@ -1,4 +1,83 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: AWS Config Rules Version 2.0
+
+Parameters:
+    
+  pSnsAlertNotifyEmail:
+    Description:  SNS Topic for Config Alerts
+    Type: String
+
+
 Resources:
+
+  #####################################
+  # Cloudwatch Event 
+  #####################################
+    
+  CloudWatchEventRuleConfigViolations:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: "Event Rule to Watch for AWS Config Violations"
+      EventPattern:
+        source:
+          - "aws.config"
+        detail-type:
+          - "Config Rules Compliance Change"
+        detail:
+          newEvaluationResult:
+            complianceType:
+              - "NON_COMPLIANT"
+      State: "ENABLED"
+      Targets:
+        - Arn: !Ref rSnsAlertTopic
+          Id: "rSnsAlertTopic"
+          InputTransformer:
+            InputPathsMap:
+              resourceType: "$.detail.newEvaluationResult.evaluationResultIdentifier.evaluationResultQualifier.resourceType"
+              resourceId: "$.detail.newEvaluationResult.evaluationResultIdentifier.evaluationResultQualifier.resourceId"
+              configRuleName: "$.detail.newEvaluationResult.evaluationResultIdentifier.evaluationResultQualifier.configRuleName"
+              region: "$.detail.awsRegion"
+              accountID: "$.detail.awsAccountId"
+              compliance: "$.detail.newEvaluationResult.complianceType"
+              checkTime: "$.detail.newEvaluationResult.resultRecordedTime"
+            InputTemplate: |
+              "The resource <resourceType> <resourceId> in <region> <accountID> is <compliance> with rule <configRuleName> as of <checkTime>."
+
+
+  #######################################
+  #  SNS Resources
+  #######################################
+   
+   
+   # SNS Alert Topic
+  rSnsAlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: Alert-Topic
+
+  # Email subscription for Alert topic
+  rAlertNotifySubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Endpoint: !Ref "pSnsAlertNotifyEmail"
+      Protocol: email
+      TopicArn: !Ref "rSnsAlertTopic"
+    
+  ConfigSNSTopicPolicy:
+    Type: "AWS::SNS::TopicPolicy"
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: "sns:Publish"
+            Resource: "*"
+      Topics:
+        - !Ref rSnsAlertTopic
+
+
+
   LambdaExecutionRole:
     Type: 'AWS::IAM::Role'
     Properties:
@@ -70,6 +149,11 @@ Resources:
               s3 = EnableS3Versioning()
               s3.list_buckets()
               s3.enable_bucket_versioning()
+
+  #########################################
+  #  Config Rules With Auto-Remediation
+  ######################################### 
+
   ConfigRuleForS3:
     Type: 'AWS::Config::ConfigRule'
     DependsOn: S3LambdaToEnableVersioning
@@ -318,3 +402,242 @@ Resources:
           - CreateEventBridgeToTriggerLambdaForS3SSE
           - Arn
 
+  # WE NEED TO CONFIGRE A LAMBDA AND EVENTBRIDGE FOR AUTO-REMEDIATION.
+  ConfigRuleVpcFlowlogsEnabled:
+    Type: "AWS::Config::ConfigRule"
+    Properties:
+      Source:
+        Owner: "AWS"
+        SourceIdentifier: "VPC_FLOW_LOGS_ENABLED"
+
+
+
+  #########################################
+  #  Config Rules Without Auto-Remediation
+  #########################################
+
+  ConfigRuleRDSNoPublicInstance:
+    Type: "AWS::Config::ConfigRule"
+    Properties:
+      Source:
+        Owner: "AWS"
+        SourceIdentifier: "RDS_INSTANCE_PUBLIC_ACCESS_CHECK"
+
+
+  ConfigRuleS3BucketSSLRequestsOnly:
+    Type: "AWS::Config::ConfigRule"
+    Properties:
+      Source:
+        Owner: "AWS"
+        SourceIdentifier: "S3_BUCKET_SSL_REQUESTS_ONLY"
+
+
+  ConfigRuleRDSSnapshotPublicProhibited:
+    Type: "AWS::Config::ConfigRule"
+    Properties:
+      Source:
+        Owner: "AWS"
+        SourceIdentifier: "RDS_SNAPSHOTS_PUBLIC_PROHIBITED"
+
+
+  ConfigRuleCloudTrailEnabled:
+    Type: "AWS::Config::ConfigRule"
+    Properties:
+      Source:
+        Owner: "AWS"
+        SourceIdentifier: "CLOUD_TRAIL_CLOUD_WATCH_LOGS_ENABLED"
+
+
+  ConfigRuleCloudTrailEncryptedEnabled:
+    Type: "AWS::Config::ConfigRule"
+    Properties:
+      Source:
+        Owner: "AWS"
+        SourceIdentifier: "CLOUD_TRAIL_ENCRYPTION_ENABLED"
+
+
+  ConfigRuleCloudTrailEnabled:
+    Type: "AWS::Config::ConfigRule"
+    Properties:
+      Source:
+        Owner: "AWS"
+        SourceIdentifier: "CLOUD_TRAIL_ENABLED"
+
+
+  ConfigRuleS3BucketPublicWriteProphibited:
+    Type: "AWS::Config::ConfigRule"
+    Properties:
+      Source:
+        Owner: "AWS"
+        SourceIdentifier: "S3_BUCKET_PUBLIC_WRITE_PROHIBITED"
+
+
+  ConfigRuleS3BucketPublicReadProhibited:
+    Type: "AWS::Config::ConfigRule"
+    Properties:
+      Source:
+        Owner: "AWS"
+        SourceIdentifier: "S3_BUCKET_PUBLIC_READ_PROHIBITED"
+
+
+  ConfigRuleCloudTrailLogFileValidationEnabled: 
+    Type: "AWS::Config::ConfigRule"
+    Properties:
+      Source:
+        Owner: "AWS"
+        SourceIdentifier: "CLOUD_TRAIL_LOG_FILE_VALIDATION_ENABLED"
+
+
+  ConfigRuleCloudTrailS3DataEventsEnabled:
+    Type: "AWS::Config::ConfigRule"
+    Properties:
+      Source:
+        Owner: "AWS"
+        SourceIdentifier: "CLOUDTRAIL_S3_DATAEVENTS_ENABLED" 
+
+
+  ConfigRuleEBSSnapshotPublicRestorableCheck:
+    Type: "AWS::Config::ConfigRule"
+    Properties:
+      Source:
+        Owner: "AWS"
+        SourceIdentifier: "EBS_SNAPSHOT_PUBLIC_RESTORABLE_CHECK"  
+
+
+  ConfigRuleEC2EBSEncryptionByDefault:
+    Type: "AWS::Config::ConfigRule"
+    Properties:
+      Source:
+        Owner: "AWS"
+        SourceIdentifier: "EC2_EBS_ENCRYPTION_BY_DEFAULT"  
+
+
+  ConfigRuleEC2InstanceNoPublicIP:
+    Type: "AWS::Config::ConfigRule"
+    Properties:
+      Source:
+        Owner: "AWS"
+        SourceIdentifier: "EC2_INSTANCE_NO_PUBLIC_IP"
+
+
+  ConfigRuleELBDeletionProtectionEnabled:
+    Type: "AWS::Config::ConfigRule"
+    Properties:
+      Source:
+        Owner: "AWS"
+        SourceIdentifier:  "ELB_DELETION_PROTECTION_ENABLED"
+
+
+  ConfigRuleELBLoggingEnabled:
+    Type: "AWS::Config::ConfigRule"
+    Properties:
+      Source:
+        Owner: "AWS"
+        SourceIdentifier: "ELB_LOGGING_ENABLED" 
+
+
+  ConfigRuleEncryptedVolumes:
+    Type: "AWS::Config::ConfigRule"
+    Properties:
+      Source:
+        Owner: "AWS"
+        SourceIdentifier: "ENCRYPTED_VOLUMES"
+
+
+  ConfigRuleGuarddutyEnabledCentralized:
+    Type: "AWS::Config::ConfigRule"
+    Properties:
+      Source:
+        Owner: "AWS"
+        SourceIdentifier: "GUARDDUTY_ENABLED_CENTRALIZED"
+
+
+  ConfigRuleIAMPasswordPolicy:
+    Type: "AWS::Config::ConfigRule"
+    Properties:
+      Source:
+        Owner: "AWS"
+        SourceIdentifier: "IAM_PASSWORD_POLICY"
+
+
+  ConfigRuleIAMRootAccessKeyCheck:
+    Type: "AWS::Config::ConfigRule"
+    Properties:
+      Source:
+        Owner: "AWS"
+        SourceIdentifier: "IAM_ROOT_ACCESS_KEY_CHECK"
+
+
+  ConfigRuleIAMUserMFAEnabled:
+    Type: "AWS::Config::ConfigRule"
+    Properties:
+      Source:
+        Owner: "AWS"
+        SourceIdentifier: "IAM_USER_MFA_ENABLED"
+
+
+  ConfigRuleInternetGatewayAuthorizedVPCOnly:
+    Type: "AWS::Config::ConfigRule"
+    Properties:
+      Source:
+        Owner: "AWS" 
+        SourceIdentifier: "INTERNET_GATEWAY_AUTHORIZED_VPC_ONLY"
+
+        
+  ConfigRuleLambdaFunctionPublicAccessProhibited:
+    Type: "AWS::Config::ConfigRule"
+    Properties:
+      Source:
+        Owner: "AWS"
+        SourceIdentifier: "LAMBDA_FUNCTION_PUBLIC_ACCESS_PROHIBITED"
+
+
+  ConfigRuleMFAEnaledForIAMConsoleAccess:
+    Type: "AWS::Config::ConfigRule"
+    Properties:
+      Source:
+        Owner: "AWS"
+        SourceIdentifier: "MFA_ENABLED_FOR_IAM_CONSOLE_ACCESS"
+
+
+  ConfigRuleMultiRegionCloudTrailEnabled:
+    Type: "AWS::Config::ConfigRule"
+    Properties:
+      Source:
+        Owner: "AWS"
+        SourceIdentifier: "MULTI_REGION_CLOUD_TRAIL_ENABLED"
+
+
+  ConfigRuleRDSLoggingEnabled:
+    Type: "AWS::Config::ConfigRule"
+    Properties:
+      Source:
+        Owner: "AWS"
+        SourceIdentifier: "RDS_LOGGING_ENABLED"
+
+
+  ConfigRuleRDSSnapShotEncrypted:
+    Type: "AWS::Config::ConfigRule"
+    Properties:
+      Source:
+        Owner: "AWS"
+        SourceIdentifier: "RDS_SNAPSHOT_ENCRYPTED"
+
+
+  ConfigRuleRDSStorageEncrypted:
+    Type: "AWS::Config::ConfigRule"
+    Properties:
+      Source:
+        Owner: "AWS"
+        SourceIdentifier: "RDS_STORAGE_ENCRYPTED"
+
+
+  ConfigRuleAccessKeysRotated:
+   Type: "AWS::Config::ConfigRule"
+   Properties:
+     Source:
+       Owner: "AWS"
+       SourceIdentifier: "ACCESS_KEYS_ROTATED"
+     InputParameters:
+        maxAccessKeyAge: '60'
+                                                                                                                                                              
